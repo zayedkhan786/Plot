@@ -11,7 +11,7 @@ const NAV = [
   { to: '/seed',       icon: '⚙️',  label: 'Setup / Seed' },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen, onCloseNav }) {
   const { user } = useAuth();
   const navigate  = useNavigate();
 
@@ -23,7 +23,16 @@ export default function Sidebar() {
   const initials = user?.email?.slice(0, 2).toUpperCase() || 'U';
 
   return (
-    <aside className="sidebar">
+    <>
+      <div
+        className={`sidebar-backdrop ${mobileOpen ? 'sidebar-backdrop--visible' : ''}`}
+        aria-hidden="true"
+        onClick={onCloseNav}
+      />
+      <aside
+        id="app-sidebar"
+        className={`sidebar ${mobileOpen ? 'sidebar--open' : ''}`}
+      >
       <div className="sidebar-logo">
         <div className="sidebar-logo-icon">🏡</div>
         <div className="sidebar-logo-title">Shree Dungar</div>
@@ -38,6 +47,7 @@ export default function Sidebar() {
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            onClick={() => onCloseNav?.()}
           >
             <span className="nav-icon">{item.icon}</span>
             <span>{item.label}</span>
@@ -53,5 +63,6 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   );
 }

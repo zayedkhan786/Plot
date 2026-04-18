@@ -126,18 +126,20 @@ export default function Enquiries() {
 
   return (
     <div className="page-wrapper">
-      <div className="page-header flex-between">
+      <div className="page-header page-header--split">
         <div>
           <h1 className="page-title">📞 Enquiries</h1>
           <p className="page-subtitle">Customer lead management &amp; follow-up tracker</p>
         </div>
-        <button className="btn btn-primary" id="add-enquiry-btn" onClick={() => { setEditing(null); setShowForm(true); }}>
-          + New Enquiry
-        </button>
+        <div className="page-header-actions">
+          <button type="button" className="btn btn-primary" id="add-enquiry-btn" onClick={() => { setEditing(null); setShowForm(true); }}>
+            + New Enquiry
+          </button>
+        </div>
       </div>
 
       {/* Status pills */}
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+      <div className="kpi-grid kpi-grid-4">
         {Object.entries(STATUS_COLORS).map(([key, cfg]) => (
           <div key={key} className="kpi-card" style={{ cursor: 'pointer', borderColor: statusFilter===key ? cfg.color : 'transparent' }}
             onClick={() => setStatusFilter(statusFilter === key ? 'all' : key)}>

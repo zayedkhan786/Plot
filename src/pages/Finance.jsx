@@ -51,7 +51,7 @@ export default function Finance() {
       </div>
 
       {/* Phase breakdown */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+      <div className="grid-2" style={{ marginBottom: 24 }}>
         {[
           { label: 'Phase 1', arr: phase1 },
           { label: 'Phase 2', arr: phase2 },

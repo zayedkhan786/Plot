@@ -162,7 +162,7 @@ export default function Receipts() {
         <p className="page-subtitle">Generate booking, installment, and payment receipts</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, alignItems: 'flex-start' }}>
+      <div className="receipt-layout">
         {/* Controls */}
         <div className="card-lg">
           <h3 style={{ marginBottom: 16, fontSize: 15, fontWeight: 700 }}>Generate Receipt</h3>

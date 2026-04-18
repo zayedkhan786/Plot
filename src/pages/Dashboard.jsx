@@ -31,7 +31,7 @@ function DonutChart({ available, pending, sold, total }) {
   const soldPct = total > 0 ? Math.round((sold / total) * 100) : 0;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+    <div className="donut-layout">
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <svg width={SIZE} height={SIZE}>
           {/* background ring */}
@@ -289,7 +289,7 @@ function TopSoldPlots({ plots }) {
         {top.map((p, i) => {
           const pct = p.price > 0 ? Math.round((p.amountReceived / p.price) * 100) : 0;
           return (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div key={p.id} className="top-sold-row">
               <div style={{
                 width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
                 background: i === 0 ? 'var(--gradient-gold)' : 'var(--bg-panel)',
@@ -388,14 +388,16 @@ export default function Dashboard() {
   return (
     <div className="page-wrapper">
       {/* ── Header ── */}
-      <div className="page-header flex-between">
+      <div className="page-header page-header--split">
         <div>
           <h1 className="page-title">📊 Dashboard</h1>
           <p className="page-subtitle">Shree Dungar Residency · Sehi Kalan, Surajgarh</p>
         </div>
-        <button className="btn btn-primary" onClick={() => navigate('/map')}>
-          🗺️ View Plot Map
-        </button>
+        <div className="page-header-actions">
+          <button type="button" className="btn btn-primary" onClick={() => navigate('/map')}>
+            🗺️ View Plot Map
+          </button>
+        </div>
       </div>
 
       {/* ── KPI Row ── */}
@@ -418,7 +420,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Visual Row: Donut + Revenue Bar ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+      <div className="grid-2" style={{ marginBottom: 24 }}>
 
         {/* Donut Chart Card */}
         <div className="card-lg">
@@ -460,13 +462,13 @@ export default function Dashboard() {
       </div>
 
       {/* ── Phase Breakdown with Mini Grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+      <div className="grid-2" style={{ marginBottom: 24 }}>
         <PhaseCard phase={1} plots={plots} />
         <PhaseCard phase={2} plots={plots} />
       </div>
 
       {/* ── Bottom Row: Transactions + Top Plots ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16, marginBottom: 24 }}>
+      <div className="grid-sidebar" style={{ marginBottom: 24 }}>
         <RecentTx transactions={transactions} />
         <TopSoldPlots plots={plots} />
       </div>

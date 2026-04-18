@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  deleteDoc,
   getDoc,
   getDocs,
   setDoc,
@@ -51,6 +52,47 @@ export const seedPlots = async (plotsArray) => {
     batch.set(ref, p, { merge: true });
   });
   await batch.commit();
+};
+
+export const createPlot = async (plotData, userEmail) => {
+  const ref = doc(db, 'plots', plotData.id);
+  await setDoc(ref, {
+    ...plotData,
+    createdAt: serverTimestamp(),
+    createdBy: userEmail,
+    updatedAt: serverTimestamp(),
+    updatedBy: userEmail,
+  });
+};
+
+export const deletePlot = async (id) => {
+  await deleteDoc(doc(db, 'plots', id));
+};
+
+// ─── MAP / PHASE SETTINGS ─────────────────────────────────────
+export const subscribePlotSettings = (callback) => {
+  const ref = doc(db, 'meta', 'plotSettings');
+  return onSnapshot(ref, (snap) => {
+    const data = snap.exists() ? snap.data() : {};
+    callback({
+      phaseNames: {
+        1: data.phaseNames?.[1] || 'Phase 1',
+        2: data.phaseNames?.[2] || 'Phase 2',
+      },
+    });
+  });
+};
+
+export const updatePlotSettings = async (settings, userEmail) => {
+  await setDoc(
+    doc(db, 'meta', 'plotSettings'),
+    {
+      ...settings,
+      updatedAt: serverTimestamp(),
+      updatedBy: userEmail,
+    },
+    { merge: true }
+  );
 };
 
 // ─── TRANSACTIONS ─────────────────────────────────────────────

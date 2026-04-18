@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { updatePlot, addTransaction, getPlotTransactions, getNextReceiptNumber } from '../firebase/firestore';
+import { updatePlot, addTransaction, getPlotTransactions, getNextReceiptNumber, deletePlot } from '../firebase/firestore';
 import { formatIndian, numberToIndianWords } from '../utils/indianNumbers';
 
 const STATUS_BADGE = { available: 'badge-available', pending: 'badge-pending', sold: 'badge-sold' };
@@ -15,6 +15,10 @@ export default function PlotDrawer({ plot, onClose, onUpdated }) {
   const [payAmt, setPayAmt]           = useState('');
   const [payType, setPayType]         = useState('booking');
   const [toast, setToast]             = useState(null); // {msg, type}
+
+  useEffect(() => {
+    setForm({ ...plot });
+  }, [plot]);
 
   // Load transaction history for this plot
   useEffect(() => {
@@ -51,9 +55,24 @@ export default function PlotDrawer({ plot, onClose, onUpdated }) {
   };
 
   const handleSave = async () => {
+    if (!String(form.plotNumber || '').trim()) {
+      showToast('⚠️ Plot number is required', 'error');
+      return;
+    }
+    if (!String(form.dimensions || '').trim()) {
+      showToast('⚠️ Dimensions are required', 'error');
+      return;
+    }
+
     setSaving(true);
     try {
       const update = {
+        plotNumber:     String(form.plotNumber || '').trim().toUpperCase(),
+        phase:          Number(form.phase) || 1,
+        plotType:       String(form.plotType || '').trim().toUpperCase(),
+        dimensions:     String(form.dimensions || '').trim(),
+        areaSqYd:       Number(form.areaSqYd) || 0,
+        facing:         String(form.facing || '').trim(),
         status:         form.status,
         buyerName:      (form.buyerName || '').trim(),
         buyerPhone:     (form.buyerPhone || '').trim(),
@@ -84,7 +103,7 @@ export default function PlotDrawer({ plot, onClose, onUpdated }) {
       // Record the transaction
       await addTransaction({
         plotId:       plot.id,
-        plotNumber:   plot.plotNumber,
+        plotNumber:   form.plotNumber || plot.plotNumber,
         buyerName:    form.buyerName,
         buyerPhone:   form.buyerPhone || '',
         amount:       amt,
@@ -131,6 +150,23 @@ export default function PlotDrawer({ plot, onClose, onUpdated }) {
 
   const pendingAmt = Math.max(0, (Number(form.price) || 0) - (Number(form.amountReceived) || 0));
 
+  const handleDeletePlot = async () => {
+    const yes = window.confirm(`Delete ${form.plotNumber || plot.plotNumber}? This action cannot be undone.`);
+    if (!yes) return;
+
+    setSaving(true);
+    try {
+      await deletePlot(plot.id);
+      showToast('🗑️ Plot deleted');
+      if (onUpdated) onUpdated();
+      onClose();
+    } catch (e) {
+      showToast('❌ ' + e.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="overlay" onClick={onClose}>
       <div className="drawer" onClick={(e) => e.stopPropagation()}>
@@ -138,7 +174,7 @@ export default function PlotDrawer({ plot, onClose, onUpdated }) {
         {/* ── Header ── */}
         <div className="drawer-header">
           <div>
-            <div className="drawer-title" style={{ fontSize: 20 }}>{plot.plotNumber}</div>
+            <div className="drawer-title" style={{ fontSize: 20 }}>{form.plotNumber || plot.plotNumber}</div>
             <span className={`badge ${STATUS_BADGE[form.status]}`} style={{ marginTop: 6, display: 'inline-flex' }}>
               {form.status.charAt(0).toUpperCase() + form.status.slice(1)}
             </span>
@@ -150,23 +186,112 @@ export default function PlotDrawer({ plot, onClose, onUpdated }) {
         <div className="drawer-body">
 
           {/* Plot Info Strip */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr',
-            gap: '8px 20px', background: 'var(--bg-panel)',
-            borderRadius: 10, padding: 14, marginBottom: 20,
-          }}>
+          <div
+            className="plot-drawer-meta"
+            style={{
+              background: 'var(--bg-panel)',
+              borderRadius: 10, padding: 14, marginBottom: 20,
+            }}
+          >
             {[
-              ['📐 Dimensions', plot.dimensions],
-              ['📏 Area', `${plot.areaSqYd} sq yards`],
-              ['🧭 Facing', plot.facing],
-              ['🏗️ Phase', `Phase ${plot.phase}`],
-              ['📍 Plot Type', `Type ${plot.plotType}`],
+              ['🏷️ Plot Number', form.plotNumber || '—'],
+              ['📐 Dimensions', form.dimensions || '—'],
+              ['📏 Area', `${form.areaSqYd || 0} sq yards`],
+              ['🧭 Facing', form.facing || '—'],
+              ['🏗️ Phase', `Phase ${form.phase || 1}`],
+              ['📍 Plot Type', `Type ${form.plotType || 'A'}`],
             ].map(([label, val]) => (
               <div key={label}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{label}</div>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>{val}</div>
               </div>
             ))}
+          </div>
+
+          {/* ── Section: Plot Master Details ── */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12 }}>
+              Plot Basic Details
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Plot Number</label>
+                <input
+                  name="plotNumber"
+                  className="form-input"
+                  value={form.plotNumber || ''}
+                  onChange={handleChange}
+                  placeholder="e.g. P1-045"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Phase</label>
+                <select
+                  name="phase"
+                  className="form-select"
+                  value={String(form.phase || 1)}
+                  onChange={handleChange}
+                >
+                  <option value="1">Phase 1</option>
+                  <option value="2">Phase 2</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Plot Type</label>
+                <select
+                  name="plotType"
+                  className="form-select"
+                  value={form.plotType || 'A'}
+                  onChange={handleChange}
+                >
+                  <option value="A">Type A</option>
+                  <option value="B">Type B</option>
+                  <option value="C">Type C</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Facing</label>
+                <select
+                  name="facing"
+                  className="form-select"
+                  value={form.facing || 'East'}
+                  onChange={handleChange}
+                >
+                  <option value="East">East</option>
+                  <option value="North">North</option>
+                  <option value="West">West</option>
+                  <option value="South">South</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Dimensions</label>
+                <input
+                  name="dimensions"
+                  className="form-input"
+                  value={form.dimensions || ''}
+                  onChange={handleChange}
+                  placeholder="e.g. 30×40 ft"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Area (sq yards)</label>
+                <input
+                  name="areaSqYd"
+                  type="number"
+                  className="form-input"
+                  value={form.areaSqYd || ''}
+                  onChange={handleChange}
+                  placeholder="e.g. 133"
+                />
+              </div>
+            </div>
           </div>
 
           {/* ── Section: Status ── */}
@@ -408,6 +533,13 @@ export default function PlotDrawer({ plot, onClose, onUpdated }) {
 
         {/* ── Footer ── */}
         <div className="drawer-footer">
+          <button
+            className="btn btn-danger"
+            onClick={handleDeletePlot}
+            disabled={saving}
+          >
+            🗑️ Delete Plot
+          </button>
           <button className="btn btn-secondary" onClick={onClose}>Close</button>
           <button
             className="btn btn-primary"
