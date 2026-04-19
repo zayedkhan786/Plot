@@ -234,8 +234,8 @@ function RecentTx({ transactions }) {
           <p>Book a plot to get started</p>
         </div>
       ) : (
-        <div className="table-wrapper">
-          <table>
+        <div className="table-wrapper recent-tx-table">
+          <table className="recent-tx-desktop">
             <thead>
               <tr>
                 <th>Receipt</th>
@@ -267,6 +267,34 @@ function RecentTx({ transactions }) {
               ))}
             </tbody>
           </table>
+          <div className="recent-tx-cards">
+            {recent.map(tx => (
+              <div key={tx.id} className="recent-tx-card">
+                <div className="recent-tx-card-head">
+                  <span className="recent-tx-card-receipt text-blue fw-600">{tx.receiptNumber || '—'}</span>
+                  <span className="recent-tx-card-amt fw-700 text-success">₹{formatIndian(tx.amount)}</span>
+                </div>
+                <div className="recent-tx-card-row">
+                  <span className="recent-tx-card-label">Plot</span>
+                  <span className="fw-600">{tx.plotNumber}</span>
+                </div>
+                <div className="recent-tx-card-row">
+                  <span className="recent-tx-card-label">Buyer</span>
+                  <span className="recent-tx-card-ellipsis">{tx.buyerName || '—'}</span>
+                </div>
+                <div className="recent-tx-card-row recent-tx-card-meta">
+                  <span className={`badge badge-${tx.type === 'booking' ? 'pending' : 'sold'}`}>
+                    {tx.type === 'booking' ? 'Booking' : tx.type === 'installment' ? 'Installment' : 'Full Pay'}
+                  </span>
+                  <span className="text-secondary fs-12">
+                    {tx.createdAt?.toDate
+                      ? tx.createdAt.toDate().toLocaleDateString('en-IN')
+                      : '—'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -285,38 +313,47 @@ function TopSoldPlots({ plots }) {
   return (
     <div className="card-lg">
       <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>🏆 Top Transactions by Plot</h3>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="top-sold-list">
         {top.map((p, i) => {
           const pct = p.price > 0 ? Math.round((p.amountReceived / p.price) * 100) : 0;
           return (
-            <div key={p.id} className="top-sold-row">
-              <div style={{
-                width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-                background: i === 0 ? 'var(--gradient-gold)' : 'var(--bg-panel)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 12, fontWeight: 800, color: i === 0 ? '#fff' : 'var(--text-muted)',
-              }}>
-                {i + 1}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <div>
-                    <span style={{ fontWeight: 700, fontSize: 13 }}>{p.plotNumber}</span>
-                    {p.buyerName && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>{p.buyerName}</span>}
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>
-                    {formatLakhs(p.amountReceived)}
-                  </span>
+            <div key={p.id} className="top-sold-card">
+              <div className="top-sold-card-top">
+                <div
+                  className="top-sold-rank"
+                  style={{
+                    background: i === 0 ? 'var(--gradient-gold)' : 'var(--bg-panel)',
+                    color: i === 0 ? '#fff' : 'var(--text-muted)',
+                  }}
+                >
+                  {i + 1}
                 </div>
-                <div style={{ height: 5, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
+                <div className="top-sold-main">
+                  <div className="top-sold-line">
+                    <span className="top-sold-plot">{p.plotNumber}</span>
+                    <span className="top-sold-amt">{formatLakhs(p.amountReceived)}</span>
+                  </div>
+                  {p.buyerName && (
+                    <div className="top-sold-buyer">{p.buyerName}</div>
+                  )}
+                </div>
+                <span className={`badge badge-${p.status} top-sold-badge`}>{p.status}</span>
+              </div>
+              <div className="top-sold-bar-wrap">
+                <div style={{
+                  height: 5,
+                  background: 'var(--border)',
+                  borderRadius: 99,
+                  overflow: 'hidden',
+                }}>
                   <div style={{
-                    height: '100%', width: `${pct}%`,
+                    height: '100%',
+                    width: `${pct}%`,
                     background: p.status === 'sold' ? 'var(--gradient-green)' : 'var(--gradient-gold)',
                     borderRadius: 99,
                   }} />
                 </div>
               </div>
-              <span className={`badge badge-${p.status}`} style={{ flexShrink: 0 }}>{p.status}</span>
             </div>
           );
         })}

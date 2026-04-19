@@ -15,6 +15,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './config';
+import { normalizePhasesFromDoc } from '../utils/plotPhaseSettings';
 
 // ─── PLOTS ───────────────────────────────────────────────────
 export const subscribePlots = (callback, onError) => {
@@ -75,10 +76,7 @@ export const subscribePlotSettings = (callback) => {
   return onSnapshot(ref, (snap) => {
     const data = snap.exists() ? snap.data() : {};
     callback({
-      phaseNames: {
-        1: data.phaseNames?.[1] || 'Phase 1',
-        2: data.phaseNames?.[2] || 'Phase 2',
-      },
+      phases: normalizePhasesFromDoc(data),
     });
   });
 };

@@ -4,15 +4,18 @@ import { useAuth } from '../context/AuthContext';
 import { createPlot, getPlot, subscribePlotSettings, updatePlotSettings } from '../firebase/firestore';
 import { PLOT_COLORS } from '../utils/plotData';
 import { formatLakhs } from '../utils/indianNumbers';
+import {
+  mergePhasesWithPlots,
+  clampPhaseCols,
+  DEFAULT_PHASES,
+} from '../utils/plotPhaseSettings';
 import PlotDrawer from './PlotDrawer';
 import { useNavigate } from 'react-router-dom';
 
-const CELL_W  = 52;
-const CELL_H  = 38;
-const GAP     = 4;
-const ROAD_W  = 28;
-const COLS_P1 = 13;
-const COLS_P2 = 7;
+const CELL_W = 52;
+const CELL_H = 38;
+const GAP = 4;
+const ROAD_W = 28;
 
 const DEFAULT_NEW_PLOT = {
   phase: '1',
@@ -57,34 +60,31 @@ export default function MapView() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPlot, setNewPlot] = useState(DEFAULT_NEW_PLOT);
   const [settingsSaving, setSettingsSaving] = useState(false);
-  const [phaseNames, setPhaseNames] = useState({ 1: 'Phase 1', 2: 'Phase 2' });
+  const [phaseConfig, setPhaseConfig] = useState(DEFAULT_PHASES);
+  const [newPhaseName, setNewPhaseName] = useState('');
+  const [newPhaseCols, setNewPhaseCols] = useState('8');
+  const [activePhaseIndex, setActivePhaseIndex] = useState(0);
 
   useEffect(() => {
-    const unsub = subscribePlotSettings((data) => setPhaseNames(data.phaseNames));
+    const unsub = subscribePlotSettings((data) => setPhaseConfig(data.phases));
     return unsub;
   }, []);
 
-  const phase1 = useMemo(
-    () => plots.filter((p) => Number(p.phase) === 1).sort((a, b) => (a.row - b.row) || (a.col - b.col) || String(a.plotNumber).localeCompare(String(b.plotNumber))),
-    [plots]
-  );
-  const phase2 = useMemo(
-    () => plots.filter((p) => Number(p.phase) === 2).sort((a, b) => (a.row - b.row) || (a.col - b.col) || String(a.plotNumber).localeCompare(String(b.plotNumber))),
-    [plots]
-  );
+  const phases = useMemo(() => mergePhasesWithPlots(phaseConfig, plots), [phaseConfig, plots]);
 
-  const filterPlot = useCallback((p) => {
-    if (filter !== 'all' && p.status !== filter) return false;
-    if (search) {
-      const s = search.toLowerCase();
-      if (!p.plotNumber.toLowerCase().includes(s) &&
-          !(p.buyerName || '').toLowerCase().includes(s)) return false;
-    }
-    return true;
-  }, [filter, search]);
+  const filterPlot = useCallback(
+    (p) => {
+      if (filter !== 'all' && p.status !== filter) return false;
+      if (search) {
+        const s = search.toLowerCase();
+        if (!p.plotNumber.toLowerCase().includes(s) && !(p.buyerName || '').toLowerCase().includes(s)) return false;
+      }
+      return true;
+    },
+    [filter, search]
+  );
 
   const handlePlotClick = useCallback(async (p) => {
-    // Fetch the freshest data from Firestore before opening
     setDrawerLoading(true);
     try {
       const fresh = await getPlot(p.id);
@@ -96,21 +96,89 @@ export default function MapView() {
     }
   }, []);
 
-  const handleSavePhaseNames = async () => {
+  const phaseBlocks = useMemo(() => {
+    return phases.map((cfg) => {
+      const list = plots
+        .filter((p) => Number(p.phase) === cfg.id)
+        .sort(
+          (a, b) =>
+            (a.row - b.row) || (a.col - b.col) || String(a.plotNumber).localeCompare(String(b.plotNumber))
+        );
+      const cols = clampPhaseCols(cfg.cols);
+      const nRows = Math.max(1, Math.ceil(Math.max(list.length, 1) / cols));
+      const isLegacyP1 = cfg.id === 1 && cols === 13;
+
+      let width;
+      let height;
+      if (isLegacyP1) {
+        width = cols * (CELL_W + GAP) + ROAD_W;
+        height = nRows * (CELL_H + GAP) + ROAD_W * 2 + 30;
+      } else {
+        width = cols * (CELL_W + GAP) + 20;
+        height = nRows * (CELL_H + GAP) + ROAD_W + 30;
+      }
+
+      return {
+        cfg: { ...cfg, cols },
+        list,
+        cols,
+        nRows,
+        width,
+        height,
+        isLegacyP1,
+      };
+    });
+  }, [phases, plots]);
+
+  useEffect(() => {
+    setActivePhaseIndex((prev) => {
+      if (phaseBlocks.length === 0) return 0;
+      return Math.min(Math.max(0, prev), phaseBlocks.length - 1);
+    });
+  }, [phaseBlocks.length]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const t = e.target;
+      if (t && (t.closest?.('input, textarea, select') || t.isContentEditable)) return;
+      if (phaseBlocks.length <= 1) return;
+      e.preventDefault();
+      setActivePhaseIndex((i) => {
+        if (e.key === 'ArrowLeft') return Math.max(0, i - 1);
+        return Math.min(phaseBlocks.length - 1, i + 1);
+      });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [phaseBlocks.length]);
+
+  const handleSavePhases = async () => {
+    const toSave = mergePhasesWithPlots(phaseConfig, plots);
     setSettingsSaving(true);
     try {
-      await updatePlotSettings(
-        {
-          phaseNames: {
-            1: String(phaseNames[1] || 'Phase 1').trim() || 'Phase 1',
-            2: String(phaseNames[2] || 'Phase 2').trim() || 'Phase 2',
-          },
-        },
-        user?.email || 'system'
-      );
+      await updatePlotSettings({ phases: toSave }, user?.email || 'system');
+      setPhaseConfig(toSave);
     } finally {
       setSettingsSaving(false);
     }
+  };
+
+  const updatePhaseRow = (id, patch) => {
+    setPhaseConfig((prev) => {
+      const merged = mergePhasesWithPlots(prev, plots);
+      return merged.map((p) => (p.id === id ? { ...p, ...patch } : p));
+    });
+  };
+
+  const handleAddPhase = () => {
+    const merged = mergePhasesWithPlots(phaseConfig, plots);
+    const nextId = Math.max(0, ...merged.map((p) => p.id)) + 1;
+    const name = newPhaseName.trim() || `Phase ${nextId}`;
+    const cols = clampPhaseCols(newPhaseCols);
+    setPhaseConfig([...merged, { id: nextId, name, cols }]);
+    setNewPhaseName('');
+    setNewPhaseCols('8');
   };
 
   const handleCreatePlot = async () => {
@@ -121,16 +189,17 @@ export default function MapView() {
       return;
     }
 
-    const phase = Number(newPlot.phase) || 1;
-    const cols = phase === 1 ? COLS_P1 : COLS_P2;
-    const phaseItems = phase === 1 ? phase1 : phase2;
+    const phaseId = Number(newPlot.phase) || 1;
+    const cfg = phases.find((p) => p.id === phaseId);
+    const cols = cfg ? clampPhaseCols(cfg.cols) : 8;
+    const phaseItems = plots.filter((p) => Number(p.phase) === phaseId);
     const slot = nextFreeSlot(phaseItems, cols);
 
     await createPlot(
       {
         id: plotNumber,
         plotNumber,
-        phase,
+        phase: phaseId,
         plotType: String(newPlot.plotType || 'A').toUpperCase(),
         dimensions: String(newPlot.dimensions || '').trim(),
         areaSqYd: Number(newPlot.areaSqYd) || 0,
@@ -148,12 +217,17 @@ export default function MapView() {
       user?.email || 'system'
     );
 
-    setNewPlot(DEFAULT_NEW_PLOT);
+    setNewPlot({ ...DEFAULT_NEW_PLOT, phase: String(phaseId) });
     setShowAddForm(false);
   };
 
   if (loading) {
-    return <div className="loading-screen"><div className="spinner" /><span style={{ marginTop: 16, color: 'var(--text-secondary)' }}>Loading plots…</span></div>;
+    return (
+      <div className="loading-screen">
+        <div className="spinner" />
+        <span style={{ marginTop: 16, color: 'var(--text-secondary)' }}>Loading plots…</span>
+      </div>
+    );
   }
 
   if (dbError) {
@@ -162,60 +236,95 @@ export default function MapView() {
         <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
         <h3 style={{ color: 'var(--text-primary)', marginBottom: 8 }}>Firebase not connected</h3>
         <p style={{ color: 'var(--text-secondary)', marginBottom: 20 }}>{dbError}</p>
-        <button className="btn btn-primary" onClick={() => navigate('/seed')}>⚙️ Go to Setup Guide</button>
+        <button className="btn btn-primary" onClick={() => navigate('/seed')}>
+          ⚙️ Go to Setup Guide
+        </button>
       </div>
     );
   }
 
-  // SVG dimensions
-  const p1Rows = Math.max(1, Math.ceil(phase1.length / COLS_P1));
-  const p2Rows = Math.max(1, Math.ceil(phase2.length / COLS_P2));
-  const p1W = COLS_P1 * (CELL_W + GAP) + ROAD_W;
-  const p1H = p1Rows * (CELL_H + GAP) + ROAD_W * 2 + 30;
-  const p2W = COLS_P2 * (CELL_W + GAP) + 20;
-  const p2H = p2Rows * (CELL_H + GAP) + ROAD_W + 30;
-  const totalW = p1W + 60 + p2W;
-  const totalH = Math.max(p1H, p2H) + 20;
+  const phaseSummary = phases.map((p) => {
+    const n = plots.filter((x) => Number(x.phase) === p.id).length;
+    return `${p.name}: ${n}`;
+  }).join(' · ');
+
+  const currentBlock = phaseBlocks[activePhaseIndex];
+  const totalW = currentBlock ? currentBlock.width : 400;
+  const totalH = currentBlock ? currentBlock.height + 20 : 200;
+  const canPrev = activePhaseIndex > 0;
+  const canNext = activePhaseIndex < phaseBlocks.length - 1;
 
   return (
     <div className="page-wrapper" style={{ maxWidth: '100%' }}>
       <div className="page-header">
         <h1 className="page-title">🗺️ Plot Map</h1>
-        <p className="page-subtitle">
-          {phaseNames[1]}: {phase1.length} plots &nbsp;·&nbsp; {phaseNames[2]}: {phase2.length} plots &nbsp;·&nbsp; Full edit mode enabled
-        </p>
+        <p className="page-subtitle">{phaseSummary || 'Configure phases below'} · Use arrows on the map to switch phases · Click a plot to edit</p>
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Phase 1 Name</label>
-            <input
-              className="form-input"
-              value={phaseNames[1] || ''}
-              onChange={(e) => setPhaseNames((prev) => ({ ...prev, 1: e.target.value }))}
-              placeholder="Phase 1"
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Phase 2 Name</label>
-            <input
-              className="form-input"
-              value={phaseNames[2] || ''}
-              onChange={(e) => setPhaseNames((prev) => ({ ...prev, 2: e.target.value }))}
-              placeholder="Phase 2"
-            />
-          </div>
+      <div className="card map-phases-card" style={{ marginBottom: 14 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Phases &amp; layout</h3>
+        <p className="text-muted fs-12" style={{ marginBottom: 12, lineHeight: 1.6 }}>
+          Set display name and <strong>columns</strong> per phase (controls grid width). The map shows <strong>one phase at a time</strong> — use arrows below to switch. Save to sync Firebase.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {phases.map((ph) => (
+            <div key={ph.id} className="map-phase-row">
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Phase {ph.id} name</label>
+                <input
+                  className="form-input"
+                  value={ph.name}
+                  onChange={(e) => updatePhaseRow(ph.id, { name: e.target.value })}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Cols</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  min={3}
+                  max={24}
+                  value={ph.cols}
+                  onChange={(e) => updatePhaseRow(ph.id, { cols: clampPhaseCols(e.target.value) })}
+                />
+              </div>
+            </div>
+          ))}
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={handleSavePhaseNames} disabled={settingsSaving}>
-          {settingsSaving ? 'Saving…' : '💾 Save Phase Names'}
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 14, alignItems: 'flex-end' }}>
+          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 140px' }}>
+            <label className="form-label">New phase name</label>
+            <input
+              className="form-input"
+              value={newPhaseName}
+              onChange={(e) => setNewPhaseName(e.target.value)}
+              placeholder="e.g. Phase 3"
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0, width: 88 }}>
+            <label className="form-label">Cols</label>
+            <input
+              className="form-input"
+              type="number"
+              min={3}
+              max={24}
+              value={newPhaseCols}
+              onChange={(e) => setNewPhaseCols(e.target.value)}
+            />
+          </div>
+          <button type="button" className="btn btn-primary btn-sm" onClick={handleAddPhase}>
+            + Add phase
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={handleSavePhases} disabled={settingsSaving}>
+            {settingsSaving ? 'Saving…' : '💾 Save phases'}
+          </button>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="flex-between">
           <h3 style={{ fontSize: 15, fontWeight: 700 }}>Add / Remove Plots</h3>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowAddForm((v) => !v)}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setShowAddForm((v) => !v)}>
             {showAddForm ? 'Close' : '+ Add New Plot'}
           </button>
         </div>
@@ -229,7 +338,7 @@ export default function MapView() {
                   className="form-input"
                   value={newPlot.plotNumber}
                   onChange={(e) => setNewPlot((p) => ({ ...p, plotNumber: e.target.value }))}
-                  placeholder="e.g. P1-132"
+                  placeholder="e.g. P3-001"
                 />
               </div>
               <div className="form-group">
@@ -239,8 +348,11 @@ export default function MapView() {
                   value={newPlot.phase}
                   onChange={(e) => setNewPlot((p) => ({ ...p, phase: e.target.value }))}
                 >
-                  <option value="1">{phaseNames[1] || 'Phase 1'}</option>
-                  <option value="2">{phaseNames[2] || 'Phase 2'}</option>
+                  {phases.map((ph) => (
+                    <option key={ph.id} value={String(ph.id)}>
+                      {ph.name} (id {ph.id})
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -300,16 +412,15 @@ export default function MapView() {
                 placeholder="e.g. 450000"
               />
             </div>
-            <button className="btn btn-success btn-sm" onClick={handleCreatePlot}>
+            <button type="button" className="btn btn-success btn-sm" onClick={handleCreatePlot}>
               ✅ Create Plot
             </button>
-            <p className="text-muted fs-12 mt-8">To remove a plot, open it from map and click delete in the drawer.</p>
+            <p className="text-muted fs-12 mt-8">To remove a plot, open it from the map and use Delete in the drawer.</p>
           </div>
         )}
       </div>
 
       <div className="map-container">
-        {/* Toolbar */}
         <div className="map-toolbar">
           <span className="map-toolbar-title">Shree Dungar Residency — Site Layout</span>
 
@@ -324,13 +435,14 @@ export default function MapView() {
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {[
-              { f: 'all',       label: 'All', count: plots.length },
-              { f: 'available', label: 'Available', count: plots.filter(p=>p.status==='available').length },
-              { f: 'pending',   label: 'Pending',   count: plots.filter(p=>p.status==='pending').length },
-              { f: 'sold',      label: 'Sold',      count: plots.filter(p=>p.status==='sold').length },
+              { f: 'all', label: 'All', count: plots.length },
+              { f: 'available', label: 'Available', count: plots.filter((p) => p.status === 'available').length },
+              { f: 'pending', label: 'Pending', count: plots.filter((p) => p.status === 'pending').length },
+              { f: 'sold', label: 'Sold', count: plots.filter((p) => p.status === 'sold').length },
             ].map(({ f, label, count }) => (
               <button
                 key={f}
+                type="button"
                 className={`filter-chip ${filter === f ? `active-${f}` : ''}`}
                 onClick={() => setFilter(f)}
                 id={`map-filter-${f}`}
@@ -340,19 +452,51 @@ export default function MapView() {
             ))}
           </div>
 
-          {/* Legend */}
           <div className="legend">
-            {[['available','🔵'],['pending','🟡'],['sold','✅']].map(([s, e]) => (
+            {['available', 'pending', 'sold'].map((s) => (
               <div key={s} className="legend-item">
                 <div className="legend-dot" style={{ background: PLOT_COLORS[s] }} />
-                {s.charAt(0).toUpperCase()+s.slice(1)}
+                {s.charAt(0).toUpperCase() + s.slice(1)}
               </div>
             ))}
-            <div className="legend-item"><div className="legend-dot" style={{ background: '#2A6049' }} />Park</div>
+            <div className="legend-item">
+              <div className="legend-dot" style={{ background: '#2A6049' }} />
+              Park
+            </div>
           </div>
         </div>
 
-        {/* Map Canvas */}
+        {phaseBlocks.length > 0 && (
+          <div className="map-phase-nav" role="navigation" aria-label="Switch phase">
+            <button
+              type="button"
+              className="map-phase-nav-btn"
+              onClick={() => setActivePhaseIndex((i) => Math.max(0, i - 1))}
+              disabled={!canPrev}
+              aria-label="Previous phase"
+            >
+              ◀
+            </button>
+            <div className="map-phase-nav-center">
+              <span className="map-phase-nav-name">
+                {currentBlock ? shortPhaseLabel(currentBlock.cfg.name, `Phase ${currentBlock.cfg.id}`) : ''}
+              </span>
+              <span className="map-phase-nav-count text-muted fs-12">
+                {activePhaseIndex + 1} / {phaseBlocks.length}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="map-phase-nav-btn"
+              onClick={() => setActivePhaseIndex((i) => Math.min(phaseBlocks.length - 1, i + 1))}
+              disabled={!canNext}
+              aria-label="Next phase"
+            >
+              ▶
+            </button>
+          </div>
+        )}
+
         <div className="map-scroll-area">
           {drawerLoading && (
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 10 }}>
@@ -360,112 +504,170 @@ export default function MapView() {
             </div>
           )}
 
+          {!currentBlock ? (
+            <div className="empty-state" style={{ padding: 40 }}>
+              <p className="text-secondary">No phases configured yet.</p>
+            </div>
+          ) : (
           <svg className="plot-map-svg" width={totalW} height={totalH} viewBox={`0 0 ${totalW} ${totalH}`}>
-
-            {/* ── PHASE 1 ── */}
-            <rect x={0} y={0} width={p1W} height={p1H} fill="#0D1B2A" rx={8} />
-            <rect x={0} y={30} width={ROAD_W} height={p1H - 60} fill="#3A3A3A" rx={3} />
-            <rect x={0} y={p1H - ROAD_W} width={p1W} height={ROAD_W} fill="#3A3A3A" rx={3} />
-            <text x={p1W / 2} y={18} textAnchor="middle" fill="#8FA8C8" fontSize={11} fontWeight={700} fontFamily="Outfit, sans-serif">
-              {shortPhaseLabel(phaseNames[1], 'Phase 1').toUpperCase()} — {phase1.length} PLOTS
-            </text>
-            <text x={12} y={p1H / 2} fill="#666" fontSize={9} textAnchor="middle"
-              transform={`rotate(-90, 12, ${p1H / 2})`}>MAIN ROAD</text>
-            <text x={p1W / 2} y={p1H - 6} fill="#666" fontSize={9} textAnchor="middle">CHIRAWA ROAD</text>
-
-            {/* Park area (Phase 1 bottom-right) */}
             {(() => {
-              const parkCols = 3, parkRows = 2;
-              const px = ROAD_W + (COLS_P1 - parkCols) * (CELL_W + GAP);
-              const py = 30 + ROAD_W / 2 + (p1Rows - parkRows - 1) * (CELL_H + GAP);
+              const block = currentBlock;
+              const { cfg, list, cols, nRows, width, height, isLegacyP1 } = block;
+              const title = shortPhaseLabel(cfg.name, `Phase ${cfg.id}`);
+
+              if (isLegacyP1) {
+                return (
+                  <g key={cfg.id}>
+                    <rect x={0} y={0} width={width} height={height} fill="#0D1B2A" rx={8} />
+                    <rect x={0} y={30} width={ROAD_W} height={height - 60} fill="#3A3A3A" rx={3} />
+                    <rect x={0} y={height - ROAD_W} width={width} height={ROAD_W} fill="#3A3A3A" rx={3} />
+                    <text
+                      x={width / 2}
+                      y={18}
+                      textAnchor="middle"
+                      fill="#8FA8C8"
+                      fontSize={11}
+                      fontWeight={700}
+                      fontFamily="Outfit, sans-serif"
+                    >
+                      {title.toUpperCase()} — {list.length} PLOTS
+                    </text>
+                    <text x={12} y={height / 2} fill="#666" fontSize={9} textAnchor="middle" transform={`rotate(-90, 12, ${height / 2})`}>
+                      MAIN ROAD
+                    </text>
+                    <text x={width / 2} y={height - 6} fill="#666" fontSize={9} textAnchor="middle">
+                      CHIRAWA ROAD
+                    </text>
+                    {(() => {
+                      const parkCols = 3;
+                      const parkRows = 2;
+                      const px = ROAD_W + (cols - parkCols) * (CELL_W + GAP);
+                      const py = 30 + ROAD_W / 2 + (nRows - parkRows - 1) * (CELL_H + GAP);
+                      return (
+                        <g>
+                          <rect
+                            x={px}
+                            y={py}
+                            width={(CELL_W + GAP) * parkCols - GAP}
+                            height={(CELL_H + GAP) * parkRows - GAP}
+                            fill="#1B3A2B"
+                            rx={4}
+                          />
+                          <text
+                            x={px + ((CELL_W + GAP) * parkCols - GAP) / 2}
+                            y={py + ((CELL_H + GAP) * parkRows) / 2}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fill="#34D399"
+                            fontSize={8}
+                            fontWeight={700}
+                          >
+                            🌳 PARK
+                          </text>
+                        </g>
+                      );
+                    })()}
+                    {list.map((p) => {
+                      const visible = filterPlot(p);
+                      const color = visible ? PLOT_COLORS[p.status] : '#1A2235';
+                      const x = ROAD_W + p.col * (CELL_W + GAP);
+                      const y = 30 + ROAD_W / 2 + p.row * (CELL_H + GAP);
+                      const isPark = p.col >= cols - 3 && p.row >= nRows - 3;
+                      if (isPark) return null;
+                      return (
+                        <g key={p.id} onClick={() => visible && handlePlotClick(p)} style={{ cursor: visible ? 'pointer' : 'default' }}>
+                          <rect x={x} y={y} width={CELL_W} height={CELL_H} fill={color} opacity={visible ? 0.88 : 0.2} rx={3} />
+                          {visible && (
+                            <text
+                              x={x + CELL_W / 2}
+                              y={y + CELL_H / 2 + 1}
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              fill="#fff"
+                              fontSize={7}
+                              fontWeight={700}
+                              style={{ pointerEvents: 'none' }}
+                            >
+                              {labelText(p.plotNumber)}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              }
+
               return (
-                <g>
-                  <rect x={px} y={py} width={(CELL_W + GAP) * parkCols - GAP} height={(CELL_H + GAP) * parkRows - GAP} fill="#1B3A2B" rx={4} />
-                  <text x={px + ((CELL_W + GAP) * parkCols - GAP) / 2} y={py + (CELL_H + GAP) * parkRows / 2}
-                    textAnchor="middle" dominantBaseline="middle" fill="#34D399" fontSize={8} fontWeight={700}>
-                    🌳 PARK
+                <g key={cfg.id}>
+                  <rect x={0} y={0} width={width} height={height} fill="#0D1B2A" rx={8} />
+                  <rect x={0} y={height - ROAD_W} width={width} height={ROAD_W} fill="#3A3A3A" rx={3} />
+                  <text
+                    x={width / 2}
+                    y={18}
+                    textAnchor="middle"
+                    fill="#8FA8C8"
+                    fontSize={11}
+                    fontWeight={700}
+                    fontFamily="Outfit, sans-serif"
+                  >
+                    {title.toUpperCase()} — {list.length} PLOTS
                   </text>
+                  <text x={width / 2} y={height - 6} fill="#666" fontSize={9} textAnchor="middle">
+                    PHASE {cfg.id}
+                  </text>
+                  {list.map((p) => {
+                    const visible = filterPlot(p);
+                    const color = visible ? PLOT_COLORS[p.status] : '#1A2235';
+                    const x = 10 + p.col * (CELL_W + GAP);
+                    const y = 30 + p.row * (CELL_H + GAP);
+                    return (
+                      <g key={p.id} onClick={() => visible && handlePlotClick(p)} style={{ cursor: visible ? 'pointer' : 'default' }}>
+                        <rect x={x} y={y} width={CELL_W} height={CELL_H} fill={color} opacity={visible ? 0.88 : 0.2} rx={3} />
+                        {visible && (
+                          <text
+                            x={x + CELL_W / 2}
+                            y={y + CELL_H / 2 + 1}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fill="#fff"
+                            fontSize={7}
+                            fontWeight={700}
+                            style={{ pointerEvents: 'none' }}
+                          >
+                            {labelText(p.plotNumber)}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
                 </g>
               );
             })()}
-
-            {phase1.map((p) => {
-              const visible = filterPlot(p);
-              const color   = visible ? PLOT_COLORS[p.status] : '#1A2235';
-              const x = ROAD_W + p.col * (CELL_W + GAP);
-              const y = 30 + ROAD_W / 2 + p.row * (CELL_H + GAP);
-              // Skip park slots
-              const isPark = p.col >= COLS_P1 - 3 && p.row >= p1Rows - 3;
-              if (isPark) return null;
-              return (
-                <g key={p.id} onClick={() => visible && handlePlotClick(p)} style={{ cursor: visible ? 'pointer' : 'default' }}>
-                  <rect x={x} y={y} width={CELL_W} height={CELL_H} fill={color} opacity={visible ? 0.88 : 0.2} rx={3} />
-                  {visible && (
-                    <text x={x + CELL_W/2} y={y + CELL_H/2 + 1} textAnchor="middle" dominantBaseline="middle"
-                      fill="#fff" fontSize={7} fontWeight={700} style={{ pointerEvents: 'none' }}>
-                      {labelText(p.plotNumber)}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-
-            {/* ── PHASE 2 ── */}
-            <g transform={`translate(${p1W + 60}, 0)`}>
-              <rect x={0} y={0} width={p2W} height={p2H} fill="#0D1B2A" rx={8} />
-              <rect x={0} y={p2H - ROAD_W} width={p2W} height={ROAD_W} fill="#3A3A3A" rx={3} />
-              <text x={p2W / 2} y={18} textAnchor="middle" fill="#8FA8C8" fontSize={11} fontWeight={700} fontFamily="Outfit, sans-serif">
-                {shortPhaseLabel(phaseNames[2], 'Phase 2').toUpperCase()} — {phase2.length} PLOTS
-              </text>
-              <text x={p2W / 2} y={p2H - 6} fill="#666" fontSize={9} textAnchor="middle">SEHI KALAN ROAD</text>
-
-              {phase2.map((p) => {
-                const visible = filterPlot(p);
-                const color   = visible ? PLOT_COLORS[p.status] : '#1A2235';
-                const x = p.col * (CELL_W + GAP);
-                const y = 30 + p.row * (CELL_H + GAP);
-                return (
-                  <g key={p.id} onClick={() => visible && handlePlotClick(p)} style={{ cursor: visible ? 'pointer' : 'default' }}>
-                    <rect x={x} y={y} width={CELL_W} height={CELL_H} fill={color} opacity={visible ? 0.88 : 0.2} rx={3} />
-                    {visible && (
-                      <text x={x + CELL_W/2} y={y + CELL_H/2 + 1} textAnchor="middle" dominantBaseline="middle"
-                        fill="#fff" fontSize={7} fontWeight={700} style={{ pointerEvents: 'none' }}>
-                        {labelText(p.plotNumber)}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-            </g>
           </svg>
+          )}
         </div>
       </div>
 
-      {/* Status summary cards */}
       <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
-        {['available','pending','sold'].map((s) => {
+        {['available', 'pending', 'sold'].map((s) => {
           const list = plots.filter((p) => p.status === s);
           return (
             <div key={s} className="card" style={{ flex: '1', minWidth: 180 }}>
               <div className="flex-between">
-                <span className={`badge badge-${s}`}>{s.charAt(0).toUpperCase()+s.slice(1)}</span>
+                <span className={`badge badge-${s}`}>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
                 <span style={{ fontSize: 28, fontWeight: 800 }}>{list.length}</span>
               </div>
               <div className="text-muted fs-12 mt-8">
-                ₹{formatLakhs(list.reduce((a,p)=>a+(p.amountReceived||0),0)).replace('₹','')} received
+                ₹{formatLakhs(list.reduce((a, p) => a + (p.amountReceived || 0), 0)).replace('₹', '')} received
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Drawer */}
       {selectedPlot && (
-        <PlotDrawer
-          plot={selectedPlot}
-          onClose={() => setSelectedPlot(null)}
-          onUpdated={() => setSelectedPlot(null)}
-        />
+        <PlotDrawer plot={selectedPlot} onClose={() => setSelectedPlot(null)} onUpdated={() => setSelectedPlot(null)} />
       )}
     </div>
   );

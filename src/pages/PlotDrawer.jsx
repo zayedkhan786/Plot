@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { updatePlot, addTransaction, getPlotTransactions, getNextReceiptNumber, deletePlot } from '../firebase/firestore';
+import { updatePlot, addTransaction, getPlotTransactions, getNextReceiptNumber, deletePlot, subscribePlotSettings } from '../firebase/firestore';
 import { formatIndian, numberToIndianWords } from '../utils/indianNumbers';
+import { mergePhasesWithPlots } from '../utils/plotPhaseSettings';
 
 const STATUS_BADGE = { available: 'badge-available', pending: 'badge-pending', sold: 'badge-sold' };
 
@@ -15,6 +16,19 @@ export default function PlotDrawer({ plot, onClose, onUpdated }) {
   const [payAmt, setPayAmt]           = useState('');
   const [payType, setPayType]         = useState('booking');
   const [toast, setToast]             = useState(null); // {msg, type}
+  const [phaseSettings, setPhaseSettings] = useState([]);
+
+  useEffect(() => {
+    const unsub = subscribePlotSettings((d) => setPhaseSettings(d.phases));
+    return unsub;
+  }, []);
+
+  const phasesForSelect = useMemo(() => {
+    return mergePhasesWithPlots(phaseSettings, [{ phase: plot.phase }, { phase: form.phase }]);
+  }, [phaseSettings, plot.phase, form.phase]);
+
+  const phaseDisplayName = phasesForSelect.find((p) => Number(p.id) === Number(form.phase))?.name
+    || `Phase ${form.phase || '?'}`;
 
   useEffect(() => {
     setForm({ ...plot });
@@ -198,7 +212,7 @@ export default function PlotDrawer({ plot, onClose, onUpdated }) {
               ['📐 Dimensions', form.dimensions || '—'],
               ['📏 Area', `${form.areaSqYd || 0} sq yards`],
               ['🧭 Facing', form.facing || '—'],
-              ['🏗️ Phase', `Phase ${form.phase || 1}`],
+              ['🏗️ Phase', phaseDisplayName],
               ['📍 Plot Type', `Type ${form.plotType || 'A'}`],
             ].map(([label, val]) => (
               <div key={label}>
@@ -230,11 +244,14 @@ export default function PlotDrawer({ plot, onClose, onUpdated }) {
                 <select
                   name="phase"
                   className="form-select"
-                  value={String(form.phase || 1)}
+                  value={String(form.phase ?? '1')}
                   onChange={handleChange}
                 >
-                  <option value="1">Phase 1</option>
-                  <option value="2">Phase 2</option>
+                  {phasesForSelect.map((ph) => (
+                    <option key={ph.id} value={String(ph.id)}>
+                      {ph.name}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

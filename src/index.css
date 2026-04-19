@@ -698,6 +698,56 @@ tbody td {
   overflow: hidden;
 }
 
+.map-phase-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.map-phase-nav-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 18px;
+  transition: background var(--transition), border-color var(--transition), opacity var(--transition);
+}
+
+.map-phase-nav-btn:hover:not(:disabled) {
+  border-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.map-phase-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.map-phase-nav-center {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.map-phase-nav-name {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
 .map-toolbar {
   display: flex;
   align-items: center;
@@ -1259,6 +1309,153 @@ tbody td {
   flex-wrap: wrap;
 }
 
+/* ── Dashboard: Recent transactions (mobile cards) ── */
+.recent-tx-cards {
+  display: none;
+}
+
+.recent-tx-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.recent-tx-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.recent-tx-card-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  margin-top: 6px;
+  align-items: flex-start;
+}
+
+.recent-tx-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.recent-tx-card-ellipsis {
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.recent-tx-card-meta {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  align-items: center;
+}
+
+/* ── Dashboard: Top transactions by plot ── */
+.top-sold-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.top-sold-card-top {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+}
+
+.top-sold-rank {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.top-sold-main {
+  min-width: 0;
+}
+
+.top-sold-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.top-sold-plot {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.top-sold-amt {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-green);
+  flex-shrink: 0;
+}
+
+.top-sold-buyer {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-sold-badge {
+  align-self: center;
+}
+
+.top-sold-bar-wrap {
+  margin-top: 10px;
+}
+
+/* Plot map — phase editor grid (mobile) */
+.map-phase-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 10px;
+  align-items: end;
+}
+
+@media (max-width: 900px) {
+  .map-phase-row {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .top-sold-card-top {
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .top-sold-badge {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-top: 4px;
+  }
+}
+
 /* ═══════════════════════════════════════════
    RESPONSIVE
 ═══════════════════════════════════════════ */
@@ -1317,6 +1514,21 @@ tbody td {
   .grid-sidebar,
   .receipt-layout {
     grid-template-columns: 1fr;
+  }
+
+  .recent-tx-table .recent-tx-desktop {
+    display: none;
+  }
+
+  .recent-tx-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .recent-tx-table.table-wrapper {
+    overflow: visible;
+    border: none;
   }
 
   .kpi-grid.kpi-grid-4 {
