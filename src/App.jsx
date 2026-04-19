@@ -9,6 +9,7 @@ import Finance from './pages/Finance';
 import Enquiries from './pages/Enquiries';
 import Receipts from './pages/Receipts';
 import Seed from './pages/Seed';
+import Account from './pages/Account';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -41,6 +42,7 @@ function AppRoutes() {
                   <Route path="/receipts"   element={<Receipts />} />
                   <Route path="/enquiries"  element={<Enquiries />} />
                   <Route path="/seed"       element={<Seed />} />
+                  <Route path="/account"    element={<Account />} />
                   <Route path="*"           element={<Navigate to="/" replace />} />
                 </Routes>
               </Layout>

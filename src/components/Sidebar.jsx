@@ -9,6 +9,7 @@ const NAV = [
   { to: '/receipts',   icon: '🧾', label: 'Receipts' },
   { to: '/enquiries',  icon: '📞', label: 'Enquiries' },
   { to: '/seed',       icon: '⚙️',  label: 'Setup / Seed' },
+  { to: '/account',    icon: '🔐', label: 'Account' },
 ];
 
 export default function Sidebar({ mobileOpen, onCloseNav }) {
